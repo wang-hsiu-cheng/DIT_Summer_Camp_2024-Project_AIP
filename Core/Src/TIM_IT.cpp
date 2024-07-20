@@ -13,12 +13,16 @@ int arrived = 1;
 int done = 0;
 int delay_cnt = 0;
 
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-	if(htim->Instance == TIM8){
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	if (htim->Instance == TIM8)
+	{
 		// Software reset
-		if(reset)	NVIC_SystemReset();
+		if (reset)
+			NVIC_SystemReset();
 		// Determine goal
-		if(arrived && which_point < path.size()){
+		if (arrived && which_point < path.size())
+		{
 			pointToDist(path[which_point].x, path[which_point].y);
 			initParam();
 			which_point++;
