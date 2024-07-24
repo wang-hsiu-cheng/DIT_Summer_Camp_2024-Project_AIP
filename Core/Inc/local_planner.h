@@ -20,6 +20,7 @@ void initParam();
 int moveTo();
 int moveCurve(double radius, double angleRad);
 int stop();
+void planNewPath(std::vector<int> obsOnRoad, const float, const float);
 float TF_World_to_Robot(float World);
 void cmd_vel_pub(float Vx_, float Vy_, float W_);
 
@@ -37,5 +38,7 @@ const float omega_p_control_3 = 0.523598775598299;
 extern double Vx, Vy, W;
 // real velocity
 extern double rVx, rVy, rW;
+// car radius
+float R = 0.15;
 
 #endif /* INC_LOCAL_PLANNER_H_ */
