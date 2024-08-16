@@ -41,9 +41,8 @@ float angle_1;
 float angle_2;
 
 bool hasObs = false;
-float theta, d1, d2, x, y;
-pair p1(x, y), p2(x, y);
-float D1, D2, radius;
+float d1, d2, radius;
+std::vector<pair<int, bool>> obsOnRoad;
 
 void cmd_vel_pub(float Vx_, float Vy_, float W_)
 {
@@ -62,8 +61,17 @@ void updateUnitVector(double moved)
     {
         double angVel = VelocityNow / radius;
         double temp;
-        temp = cos(angVel * deltaTime) * x_vec + sin(angVel * deltaTime) * y_vec;
-        y_vec = -sin(angVel * deltaTime) * x_vec + cos(angVel * deltaTime) * y_vec;
+        // rotation matrix to update unit vector velocity
+        if (obsOnRoad[0].second)
+        {
+            temp = cos(angVel * deltaTime) * x_vec + sin(angVel * deltaTime) * y_vec;
+            y_vec = -sin(angVel * deltaTime) * x_vec + cos(angVel * deltaTime) * y_vec;
+        }
+        else
+        {
+            temp = cos(angVel * deltaTime) * x_vec - sin(angVel * deltaTime) * y_vec;
+            y_vec = sin(angVel * deltaTime) * x_vec + cos(angVel * deltaTime) * y_vec;
+        }
         x_vec = temp;
     }
     else
@@ -71,25 +79,34 @@ void updateUnitVector(double moved)
         x_vec = x_vec;
         y_vec = y_vec;
     }
-    // x_vec = (xGoal - botPositionX) / goalDistance;
-    // y_vec = (yGoal - botPositionY) / goalDistance;
 }
-void planNewPath(std::vector<int> obsOnRoad, const float xGoal, const float yGoal)
+void planNewPath(std::vector<pair<int, bool>> obsOnRoad, const float xGoal, const float yGoal)
 {
-    radius = R + obsticals[obsOnRoad[0]].w;
-    D1 = hypot((obsticals[obsOnRoad[0]].x - botPositionX), (obsticals[obsOnRoad[0]].y - botPositionY));
-    d1 = sqrt(pow(D1, 2) - pow(radius, 2));
-    D2 = hypot((obsticals[obsOnRoad[0]].x - xGoal), (obsticals[obsOnRoad[0]].y - yGoal));
-    d2 = sqrt(pow(D2, 2) - pow(radius, 2));
+    double theta, x, y, D1, D2;
+    pair p1(x, y), p2(x, y);
+    radius = R + obsticals[obsOnRoad[0].first].w;
+    D1 = hypot((obsticals[obsOnRoad[0].first].x - botPositionX), (obsticals[obsOnRoad[0].first].y - botPositionY)); // distance between start point and obstical
+    d1 = sqrt(pow(D1, 2) - pow(radius, 2));                                                                         // first straight line path
+    D2 = hypot((obsticals[obsOnRoad[0].first].x - xGoal), (obsticals[obsOnRoad[0].first].y - yGoal));               // distance between obstical and end point
+    d2 = sqrt(pow(D2, 2) - pow(radius, 2));                                                                         // second straight line path
 
-    x_vec = ((obsticals[obsOnRoad[0]].x - botPositionX) * d1 / D1 + (obsticals[obsOnRoad[0]].y - botPositionY) * -radius / D1) / D1;
-    y_vec = ((obsticals[obsOnRoad[0]].x - botPositionX) * radius / D1 + (obsticals[obsOnRoad[0]].y - botPositionY) * d1 / D1) / D1;
+    if (obsOnRoad[0].second) // use rotation matrix to turn clockwise
+    {
+        x_vec = ((obsticals[obsOnRoad[0].first].x - botPositionX) * d1 / D1 + (obsticals[obsOnRoad[0].first].y - botPositionY) * -radius / D1) / D1;
+        y_vec = ((obsticals[obsOnRoad[0].first].x - botPositionX) * radius / D1 + (obsticals[obsOnRoad[0].first].y - botPositionY) * d1 / D1) / D1;
+    }
+    else // use rotation matrix to turn counterclockwise
+    {
+        x_vec = ((obsticals[obsOnRoad[0].first].x - botPositionX) * d1 / D1 + (obsticals[obsOnRoad[0].first].y - botPositionY) * radius / D1) / D1;
+        y_vec = ((obsticals[obsOnRoad[0].first].x - botPositionX) * -radius / D1 + (obsticals[obsOnRoad[0].first].y - botPositionY) * d1 / D1) / D1;
+    }
     p1.first = x_vec * d1 + botPositionX;
     p1.second = y_vec * d1 + botPositionY;
-    p2.first = ((obsticals[obsOnRoad[0]].x - xGoal) * d2 / D2 + (obsticals[obsOnRoad[0]].y - yGoal) * radius / D2) / D2 * d2 + xGoal;
-    p2.second = ((obsticals[obsOnRoad[0]].x - xGoal) * -radius / D1 + (obsticals[obsOnRoad[0]].y - yGoal) * d2 / D2) / D2 * d2 + yGoal;
-    theta = acos(((p1.first - obsticals[obsOnRoad[0]].x) * (p2.first - obsticals[obsOnRoad[0]].x) + (p1.second - obsticals[obsOnRoad[0]].y) * (p2.second - obsticals[obsOnRoad[0]].y)) / pow(radius, 2));
-    goalDistance = d1 + d2 + radius * theta;
+    p2.first = ((obsticals[obsOnRoad[0].first].x - xGoal) * d2 / D2 + (obsticals[obsOnRoad[0].first].y - yGoal) * radius / D2) / D2 * d2 + xGoal;
+    p2.second = ((obsticals[obsOnRoad[0].first].x - xGoal) * -radius / D1 + (obsticals[obsOnRoad[0].first].y - yGoal) * d2 / D2) / D2 * d2 + yGoal;
+    // calculate the angle of the curve to avoid the obstical
+    theta = acos(((p1.first - obsticals[obsOnRoad[0].first].x) * (p2.first - obsticals[obsOnRoad[0].first].x) + (p1.second - obsticals[obsOnRoad[0].first].y) * (p2.second - obsticals[obsOnRoad[0].first].y)) / pow(radius, 2));
+    goalDistance = d1 + d2 + radius * theta; // total path length to avoid the obstical between two goal points
 }
 
 void pointToDist(const float xGoal, const float yGoal)
@@ -98,11 +115,11 @@ void pointToDist(const float xGoal, const float yGoal)
     x_vec = (xGoal - botPositionX) / goalDistance;
     y_vec = (yGoal - botPositionY) / goalDistance;
 
-    std::vector<int> obsOnRoad;
     point pt;
     for (int i = 0; i < obsticals.size(); i++)
     {
         std::vector<point> pts;
+        // record three points of the obstical(top, bottom, center)
         pts.push_back(pt = {(obsticals[i].x + y_vec * obsticals[i].w), (obsticals[i].y - x_vec * obsticals[i].w), 0.0});
         pts.push_back(pt = {(obsticals[i].x - y_vec * obsticals[i].w), (obsticals[i].y + x_vec * obsticals[i].w), 0.0});
         pts.push_back(pt = {obsticals[i].x, obsticals[i].y, 0.0});
@@ -110,12 +127,16 @@ void pointToDist(const float xGoal, const float yGoal)
         {
             float x = pts[j].x;
             float y = pts[j].y;
+            // use the four formula to check if the points are in the road area
             if (y_vec * y_vec / x_vec * (x - botPositionX) - (y - botPositionY) - R * hypot(x_vec, y_vec) / abs(x_vec) > 0 &&
                 y_vec * y_vec / x_vec * (x - botPositionX) - (y - botPositionY) + R * hypot(x_vec, y_vec) / abs(x_vec) < 0 &&
                 x_vec * x_vec / -y_vec * (x - botPositionX) - (y - botPositionY) > 0 &&
                 x_vec * x_vec / -y_vec * (x - xGoal) - (y - yGoal) < 0)
             {
-                obsOnRoad.push_back(i);
+                pair<int, bool> temp(i, true);
+                if ((y_vec / x_vec) * y_vec / x_vec * (x - botPositionX) - (y - botPositionY) < 0) // should turn counterclockwise
+                    temp.second = false;
+                obsOnRoad.push_back(temp); // record the obsticals that really on the road
                 break;
             }
         }
