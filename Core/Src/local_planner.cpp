@@ -15,21 +15,35 @@ float goalDistance;
 
 /* velocity param*/
 float VelocityNow;
-float xMoved = 0.0, yMoved = 0.0, Moved = 0.0;
+float xMoved = 0.0, yMoved = 0.0, wMoved = 0.0, Moved = 0.0;
 float remain = goalDistance;
 float x_vec, y_vec;
+float Goal_w;
+float remain_w;
 
 float maxVelocity = 0.4;
-float vel_0 = 0.05;
-float vel_1 = maxVelocity - 0.05;
-float vel_2 = maxVelocity;
-float dist_0 = 0.05;
-float dist_1 = maxVelocity / 1.5 + 0.1 / 3 - 0.05;
-float dist_2 = maxVelocity / 1.5 + 0.1 / 3;
+double maxYawVel;
+const double maxAngularVelocity = 0.1;
+const double minAngularVelocity = 0.05;
+float vel_0;
+float vel_1;
+float vel_2;
+float dist_0;
+float dist_1;
+float dist_2;
+
+float tempt_constant;
+float yaw_0;
+float yaw_1;
+float yaw_2;
+float angle_0;
+float angle_1;
+float angle_2;
 
 bool hasObs = false;
 float theta, d1, d2, x, y;
 pair p1(x, y), p2(x, y);
+float D1, D2, radius;
 
 void cmd_vel_pub(float Vx_, float Vy_, float W_)
 {
@@ -41,19 +55,27 @@ void updateUnitVector(double moved)
 {
     if (moved < d1)
     {
+        x_vec = x_vec;
+        y_vec = y_vec;
     }
     else if (moved >= d1 && goalDistance - moved > d2)
     {
+        double angVel = VelocityNow / radius;
+        double temp;
+        temp = cos(angVel * deltaTime) * x_vec + sin(angVel * deltaTime) * y_vec;
+        y_vec = -sin(angVel * deltaTime) * x_vec + cos(angVel * deltaTime) * y_vec;
+        x_vec = temp;
     }
     else
     {
+        x_vec = x_vec;
+        y_vec = y_vec;
     }
     // x_vec = (xGoal - botPositionX) / goalDistance;
     // y_vec = (yGoal - botPositionY) / goalDistance;
 }
 void planNewPath(std::vector<int> obsOnRoad, const float xGoal, const float yGoal)
 {
-    float D1, D2, radius;
     radius = R + obsticals[obsOnRoad[0]].w;
     D1 = hypot((obsticals[obsOnRoad[0]].x - botPositionX), (obsticals[obsOnRoad[0]].y - botPositionY));
     d1 = sqrt(pow(D1, 2) - pow(radius, 2));
@@ -115,11 +137,20 @@ void initParam()
     // modify velocity params according to different distance
     maxVelocity = max(min(goalDistance / 0.5 * 0.325, 0.4), 0.1);
     vel_0 = 0.05;
-    vel_1 = maxVelocity - vel_0;
+    vel_1 = maxVelocity - 0.05;
     vel_2 = maxVelocity;
     dist_0 = 0.05;
-    dist_1 = maxVelocity / 1.5 + 0.1 / 3 - dist_0;
-    dist_2 = maxVelocity / 1.5 + 0.1 / 3;
+    dist_1 = (maxVelocity + 0.05) / 1.5 - 0.05;
+    dist_2 = (maxVelocity + 0.05) / 1.5;
+    // modify params about angular velocity control
+    tempt_constant = (Goal_w >= 0.06) ? 0.02 : ((Goal_w >= 0.04) ? 0.01 : 0.005);
+    maxYawVel = min((Goal_w / 2 - tempt_constant) * 1.5, maxAngularVelocity);
+    yaw_0 = tempt_constant;
+    yaw_1 = maxYawVel - tempt_constant;
+    yaw_2 = maxYawVel;
+    angle_0 = tempt_constant;
+    angle_1 = (maxYawVel + tempt_constant) / 1.5 - tempt_constant;
+    angle_2 = (maxYawVel + tempt_constant) / 1.5;
 }
 
 // TODO: TF !!!
@@ -137,7 +168,7 @@ int moveTo()
 {
     float VelX, VelY, AngVelW;
     int is_arrived = 0;
-    if (abs(remain) > 0.005 /* && abs(lastRemainX) >= abs(remainX)*/)
+    if (abs(remain) > 0.005)
     {
         xMoved += rVx * deltaTime;
         yMoved += rVy * deltaTime;
@@ -145,7 +176,6 @@ int moveTo()
         remain = goalDistance - Moved;
         if (abs(Moved) <= dist_0)
             VelocityNow = vel_0;
-        //            VelocityNow = pow(abs(xMoved) / dist_0, 1.5) * vel_0 ;
         else if (abs(Moved) <= dist_1)
             VelocityNow = (abs(Moved) - dist_0) * 1.5 + vel_0;
         else if (abs(Moved) <= dist_2)
@@ -160,7 +190,8 @@ int moveTo()
         else
             VelocityNow = vel_2;
 
-        updateUnitVector(abs(Moved));
+        if (hasObs)
+            updateUnitVector(abs(Moved));
         if (goalDistance < 0)
         {
             VelX = -VelocityNow * x_vec;
@@ -178,13 +209,36 @@ int moveTo()
         VelX = 0;
         VelY = 0;
     }
+    if (abs(remain_w) > 0.01)
+    {
+        // cout << "\033[2J\033[1;1H";
+        // RCLCPP_INFO(this->get_logger(), "step 3\n");
 
-    if (abs(rW) > 0.00)
-        AngVelW = -rW * 0.06;
+        if (abs(wMoved) <= angle_0)
+            AngVelW = yaw_0;
+        else if (abs(wMoved) <= angle_1)
+            AngVelW = (abs(wMoved) - angle_0) * 1.5 + yaw_0;
+        else if (abs(wMoved) <= angle_1)
+            AngVelW = pow(((-abs(wMoved) + (maxYawVel + tempt_constant) / 1.5) / angle_0), 1.5) * -yaw_0 + maxYawVel;
+
+        else if (abs(remain_w) <= angle_0)
+            AngVelW = pow(abs(remain_w) / angle_0, 1.5) * yaw_0;
+        else if (abs(remain_w) <= angle_1)
+            AngVelW = (abs(remain_w) - angle_0) * 1.5 + yaw_0;
+        else if (abs(remain_w) <= angle_2)
+            AngVelW = pow(((-abs(remain_w) + (maxYawVel + tempt_constant) / 1.5) / angle_0), 1.5) * -yaw_0 + maxYawVel;
+        else
+            AngVelW = yaw_2;
+    }
     else
         AngVelW = 0;
 
-    if (VelX == 0 && VelY == 0)
+    // if (abs(rW) > 0.00)
+    //     AngVelW = -rW * 0.06;
+    // else
+    //     AngVelW = 0;
+
+    if (VelX == 0 && VelY == 0 && AngVelW == 0)
     {
         botPositionX += xMoved;
         botPositionY += yMoved;
