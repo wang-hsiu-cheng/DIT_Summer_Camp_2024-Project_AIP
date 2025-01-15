@@ -21,6 +21,7 @@ int moveTo();
 int moveCurve(double radius, double angleRad);
 int stop();
 void planNewPath(std::vector<int> obsOnRoad, const float, const float);
+void updateUnitVector(double moved);
 float TF_World_to_Robot(float World);
 void cmd_vel_pub(float Vx_, float Vy_, float W_);
 
